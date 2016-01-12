@@ -1,0 +1,230 @@
+<html>
+
+<head>
+    <script type="text/javascript">
+        // Your Client ID can be retrieved from your project in the Google
+        // Developer Console, https://console.developers.google.com
+        var CLIENT_ID = '';
+        var SCOPES = ["https://www.googleapis.com/auth/calendar"];
+        var START_TIME = 'T07:30:00-07:00';
+        var END_TIME = 'T8:00:00-07:00';
+        var MAX_DATE = '20310111T093000Z';
+        var TIME_ZONE = 'America/New_York';
+        var NAME = 'Timesheet';
+        var CALENDAR_ID = '';
+        var maxDate = new Date(2031, 0, 11, 11, 33, 30, 0);
+        var events = [];
+
+        /**
+         * Check if current user has authorized this application.
+         */
+        function checkAuth() {
+            gapi.auth.authorize({
+                'client_id': CLIENT_ID,
+                'scope': SCOPES.join(' '),
+                'immediate': true
+            }, handleAuthResult);
+        }
+
+        /**
+         * Handle response from authorization server.
+         *
+         * @param {Object} authResult Authorization result.
+         */
+        function handleAuthResult(authResult) {
+            var authorizeDiv = document.getElementById('authorize-div');
+            if (authResult && !authResult.error) {
+                // Hide auth UI, then load client library.
+                authorizeDiv.style.display = 'none';
+                loadCalendarApi();
+            } else {
+                // Show auth UI, allowing the user to initiate authorization by
+                // clicking authorize button.
+                authorizeDiv.style.display = 'inline';
+            }
+        }
+
+        /**
+         * Initiate auth flow in response to user clicking authorize button.
+         *
+         * @param {Event} event Button click event.
+         */
+        function handleAuthClick(event) {
+            gapi.auth.authorize({
+                    client_id: CLIENT_ID,
+                    scope: SCOPES,
+                    immediate: false
+                },
+                handleAuthResult);
+            return false;
+        }
+
+        /**
+         * Load Google Calendar client library. List upcoming events
+         * once client library is loaded.
+         */
+        function loadCalendarApi() {
+            gapi.client.load('calendar', 'v3', addEvents);
+        }
+
+        function addEvents() {
+            addFridayEvents();
+            addLastDayOfMonth();
+        }
+
+        function addFridayEvents() {
+            var formattedDate = getFormattedDate(new Date());
+
+            var event = {
+                'summary': NAME,
+                'start': {
+                    'dateTime': formattedDate + START_TIME,
+                    'timeZone': TIME_ZONE
+                },
+                'end': {
+                    'dateTime': formattedDate + END_TIME,
+                    'timeZone': TIME_ZONE
+                },
+                'reminders': {
+                    'useDefault': false,
+                    'overrides': [{
+                        'method': 'popup',
+                        'minutes': 0
+                    }]
+                },
+                "transparency": 'transparent',
+                'recurrence': [
+                    'RRULE:FREQ=WEEKLY;UNTIL=' + MAX_DATE + ';BYDAY=FR'
+                ]
+            };
+
+            events.push(event);
+        }
+
+        function addLastDayOfMonth() {
+            var date = new Date();
+
+
+            do {
+                var lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+                if (5 > lastDay.getDay() && 0 != lastDay.getDay()) { //Not Fri, Sat, Sun
+                    events.push(clone(addEventByDay(lastDay)));
+                }
+
+                date.setMonth(date.getMonth() + 1);
+            } while (date <= maxDate);
+
+            sendEvents(0);
+        }
+
+        function addEventByDay(d) {
+            var formattedDate = getFormattedDate(d);
+
+            var event = {
+                'summary': NAME,
+                'start': {
+                    'dateTime': formattedDate + START_TIME,
+                    'timeZone': TIME_ZONE
+                },
+                'end': {
+                    'dateTime': formattedDate + END_TIME,
+                    'timeZone': TIME_ZONE
+                },
+                'reminders': {
+                    'useDefault': false,
+                    'overrides': [{
+                        'method': 'popup',
+                        'minutes': 0
+                    }]
+                },
+                "transparency": 'transparent'
+            };
+
+            return event;
+        }
+
+        function getFormattedDate(date) {
+            var str = date.getFullYear();
+            str += '-';
+
+            if (9 > date.getMonth()) {
+                str += '0';
+                str += date.getMonth() + 1;
+            } else {
+                str += date.getMonth() + 1;
+            }
+
+            str += '-';
+            str += date.getDate();
+
+            return str;
+        }
+
+        function sendEvents(i) {
+            if (i < events.length) {
+                setTimeout(function() { addEvent(events[i], i, sendEvents);}, 500);  //Had to slow down Google thought I was spamming.
+            }
+        }
+
+        function addEvent(event,i,callback) {
+            console.log(event.start.dateTime);
+
+            var request = gapi.client.calendar.events.insert({
+                'calendarId': CALENDAR_ID,
+                'resource': event
+            });
+
+            request.execute(function(event) {
+                appendPre('Event created: ' + event.htmlLink);
+            });
+
+            callback(i+1);
+        }
+
+        function clone(obj) {
+            var copy;
+
+            // Handle the 3 simple types, and null or undefined
+            if (null == obj || "object" != typeof obj) return obj;
+
+            // Handle Object
+            if (obj instanceof Object) {
+                copy = {};
+                for (var attr in obj) {
+                    if (obj.hasOwnProperty(attr)) copy[attr] = clone(obj[attr]);
+                }
+                return copy;
+            }
+
+            throw new Error("Unable to copy obj! Its type isn't supported.");
+        }
+
+        /**
+         * Append a pre element to the body containing the given message
+         * as its text node.
+         *
+         * @param {string} message Text to be placed in pre element.
+         */
+        function appendPre(message) {
+            var pre = document.getElementById('output');
+            var textContent = document.createTextNode(message + '\n');
+            pre.appendChild(textContent);
+        }
+    </script>
+    <script src="https://apis.google.com/js/client.js?onload=checkAuth">
+    </script>
+</head>
+
+<body>
+    <div id="authorize-div" style="display: none">
+        <span>Authorize access to Google Calendar API</span>
+        <!--Button for the user to click to initiate auth sequence -->
+        <button id="authorize-button" onclick="handleAuthClick(event)">
+            Authorize
+        </button>
+    </div>
+    <pre id="output"></pre>
+</body>
+
+</html>
